@@ -8,6 +8,7 @@ import (
 	"net/http"
 
 	"github.com/datmedevil17/backend/models"
+	"github.com/datmedevil17/backend/utils"
 	"github.com/gorilla/mux"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -102,13 +103,25 @@ func UserSignIn(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	result, err := userSignIn(credentials.Email, credentials.Password)
+	user, err := userSignIn(credentials.Email, credentials.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	json.NewEncoder(w).Encode(result)
+	// Generate JWT token
+	token, err := utils.GenerateJWT(user.ID.Hex(), user.Email)
+	if err != nil {
+		http.Error(w, "Failed to generate authentication token", http.StatusInternalServerError)
+		return
+	}
+
+	// Return user data and token
+	response := map[string]interface{}{
+		"user":  user,
+		"token": token,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 func GetUserByID(w http.ResponseWriter, r *http.Request) {
@@ -155,9 +168,9 @@ func GetAuthenticatedUserID(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		http.Error(w, "User ID not found in request", http.StatusUnauthorized)
+	userID, err := utils.GetUserIDFromContext(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -187,14 +200,15 @@ func ProtectedRoute(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.Header().Set("Access-Control-Allow-Methods", "GET")
 
-	userID := r.Header.Get("X-User-ID")
-	if userID == "" {
-		http.Error(w, "Unauthorized", http.StatusUnauthorized)
+	userContext, err := utils.GetUserFromContext(r)
+	if err != nil {
+		http.Error(w, "Unauthorized: "+err.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	json.NewEncoder(w).Encode(map[string]string{
 		"message": "Access granted to protected resource",
-		"user_id": userID,
+		"user_id": userContext.UserID,
+		"email":   userContext.Email,
 	})
 }

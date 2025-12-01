@@ -6,7 +6,11 @@ import (
 )
 
 func VoteRoutes(router *mux.Router) {
-	// Vote operations
+	// Public vote routes (no authentication required)
 	router.HandleFunc("/vote/check", controller.CheckVoteStatus).Methods("POST")
-	router.HandleFunc("/vote", controller.ToggleVoteBlog).Methods("POST")
+
+	// Protected vote routes (authentication required)
+	protectedRouter := router.NewRoute().Subrouter()
+	protectedRouter.Use(JWTAuthMiddleware)
+	protectedRouter.HandleFunc("/vote", controller.ToggleVoteBlog).Methods("POST")
 }

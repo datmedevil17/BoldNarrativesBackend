@@ -6,8 +6,12 @@ import (
 )
 
 func CommentRoutes(router *mux.Router) {
-	// Comment operations
-	router.HandleFunc("/comment", controller.CreateComment).Methods("POST")
+	// Public comment routes (no authentication required)
 	router.HandleFunc("/comment/{id}", controller.GetComments).Methods("GET")
-	router.HandleFunc("/comment/{id}", controller.DeleteComment).Methods("DELETE")
+
+	// Protected comment routes (authentication required)
+	protectedRouter := router.NewRoute().Subrouter()
+	protectedRouter.Use(JWTAuthMiddleware)
+	protectedRouter.HandleFunc("/comment", controller.CreateComment).Methods("POST")
+	protectedRouter.HandleFunc("/comment/{id}", controller.DeleteComment).Methods("DELETE")
 }
