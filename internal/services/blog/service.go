@@ -2,6 +2,8 @@ package blog
 
 import (
 	"errors"
+	"sort"
+	"time"
 
 	"github.com/datmedevil17/BoldNarrativesBackend/internal/models"
 	"gorm.io/gorm"
@@ -110,25 +112,225 @@ func (s *Service) GetBlogsCount(opts Filter) (int64, error) {
 	return count, nil
 }
 
-func (s *Service) GetBlogsSortedByTime(filter Filter) ([]models.Blog, error) {}
+func (s *Service) GetBlogsSortedByTime(opts Filter, ascending bool) ([]models.BlogListResponse, error) {
+	var blogs []models.Blog
+	query := s.db.Preload("Author")
+	if opts.Genre != "" && opts.Genre != "All" {
+		query.Where("genre=?", opts.Genre)
+	}
+	if opts.AuthorID != nil {
+		query.Where("author_id=?", *opts.AuthorID)
+	}
+	if opts.Search != "" {
+		query.Where("title ILIKE ? ", "%"+opts.Search+"%")
+	}
+	if ascending {
+		query.Order("created_at ASC")
+	} else {
+		query.Order("created_at DESC")
+	}
 
-func (s *Service) GetBlogsSortedByViews(filter Filter) ([]models.Blog, error) {}
+	if opts.Limit > 0 {
+		query = query.Limit(opts.Limit)
+	}
+
+	if opts.Skip > 0 {
+		query = query.Offset(opts.Skip)
+	}
+	if err := query.Find(&blogs).Error; err != nil {
+		return nil, err
+	}
+	return s.toBlogListResponse(blogs)
+
+}
+
+func (s *Service) GetBlogsSortedByViews(opts Filter) ([]models.BlogListResponse, error) {
+	var blogs []models.Blog
+	query := s.db.Preload("Author")
+	if opts.Genre != "" && opts.Genre != "All" {
+		query.Where("genre=?", opts.Genre)
+	}
+	if opts.AuthorID != nil {
+		query.Where("author_id=?", *opts.AuthorID)
+	}
+	if opts.Search != "" {
+		query.Where("title ILIKE ? ", "%"+opts.Search+"%")
+	}
+	query = query.Order("views DESC,created_at DESC")
+
+	if opts.Limit > 0 {
+		query = query.Limit(opts.Limit)
+	}
+
+	if opts.Skip > 0 {
+		query = query.Offset(opts.Skip)
+	}
+	if err := query.Find(&blogs).Error; err != nil {
+		return nil, err
+	}
+	return s.toBlogListResponse(blogs)
+}
 
 type TrendingBlog struct {
 	models.BlogListResponse
 	Score float64 `json:"score"`
 }
 
-func (s *Service) GetTrendingBlogs() ([]TrendingBlog, error) {}
+func (s *Service) GetTrendingBlogs() ([]TrendingBlog, error) {
+	var blogs []models.Blog
 
-func (s *Service) IncrementViews(blogId uint) error {}
+	// Get top blogs by views
+	err := s.db.Preload("Author").
+		Order("views DESC").
+		Limit(10).
+		Find(&blogs).Error
 
-func (s *Service) CheckVote(blogId, userId uint) (bool, error) {}
+	if err != nil {
+		return nil, err
+	}
 
-func (s *Service) CreateComment(blogId, authorId uint, comment string) (*models.Comment, error) {}
+	var trendingBlogs []TrendingBlog
 
-func (s *Service) GetCommentsByBlogId(blogId uint) ([]models.CommentResponse, error) {}
+	for _, blog := range blogs {
+		// Count votes
+		var voteCount int64
+		s.db.Model(&models.Vote{}).Where("blog_id = ?", blog.ID).Count(&voteCount)
 
-func (s *Service) DeleteComment(commentId, userId uint) error {}
+		// Calculate age in days
+		age := time.Since(blog.CreatedAt).Hours() / 24
+		if age < 1 {
+			age = 1 // Minimum 1 day to avoid division by zero
+		}
 
-func (s *Service) toBlogListResponse(blog *models.Blog) (models.BlogListResponse, error) {}
+		// Calculate score: (views + votes * 2) / ageInDays
+		score := (float64(blog.Views) + float64(voteCount)*2) / age
+
+		trendingBlogs = append(trendingBlogs, TrendingBlog{
+			BlogListResponse: models.BlogListResponse{
+				ID:        blog.ID,
+				Title:     blog.Title,
+				Genre:     blog.Genre,
+				Views:     blog.Views,
+				VoteCount: voteCount,
+				AuthorID:  blog.AuthorID,
+				Author:    blog.Author.ToResponse(),
+				CreatedAt: blog.CreatedAt,
+			},
+			Score: score,
+		})
+	}
+
+	// Sort by score
+	sort.Slice(trendingBlogs, func(i, j int) bool {
+		return trendingBlogs[i].Score > trendingBlogs[j].Score
+	})
+
+	// Return top 10
+	if len(trendingBlogs) > 10 {
+		trendingBlogs = trendingBlogs[:10]
+	}
+
+	return trendingBlogs, nil
+
+}
+
+func (s *Service) IncrementViews(blogId uint) error {
+	return s.db.Model(&models.Blog{}).Where("id=?", blogId).Update("views", gorm.Expr("views + 1")).Error
+	// blogs++ and blogs.save nhi use kr rhe kyunki Race condition hojati agr do saath me use krte //database khud increment krta hai
+}
+
+func (s *Service) ToggleVote(blogId, userId uint) (bool, error) {
+	var vote models.Vote
+	err := s.db.Where("blog_id=? and user_id=?", blogId, userId).First(&vote).Error
+	if err == nil {
+		if err := s.db.Delete(&vote).Error; err != nil {
+			return false, err
+		}
+		return false, nil
+	}
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		newVote := models.Vote{
+			BlogID: blogId,
+			UserID: userId,
+		}
+		if err := s.db.Create(&newVote).Error; err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+	return false, nil
+}
+
+func (s *Service) CheckVote(blogId, userId uint) (bool, error) {
+	var count int64
+	err := s.db.Model(&models.Vote{}).Where("blog_id=? and user_id=?", blogId, userId).Count(&count).Error
+	if err != nil {
+		return false, err
+	}
+	return count > 0, nil
+}
+
+func (s *Service) CreateComment(blogId, authorId uint, comment string) (*models.Comment, error) {
+	newComment := &models.Comment{
+		BlogID:   blogId,
+		AuthorID: authorId,
+		Comment:  comment,
+	}
+	err := s.db.Create(&newComment).Error
+	if err != nil {
+		return nil, err
+	}
+	s.db.Preload("Author").First(&newComment)
+	return newComment, nil
+}
+
+func (s *Service) GetCommentsByBlogId(blogId uint) ([]models.CommentResponse, error) {
+	var comments []models.Comment
+	err := s.db.Where("blog_id=?", blogId).Preload("Author").Order("created_at DESC").Find(&comments).Error
+	if err != nil {
+		return nil, err
+	}
+	var response []models.CommentResponse
+	for _, comment := range comments {
+		response = append(response, models.CommentResponse{
+			ID:        comment.ID,
+			Comment:   comment.Comment,
+			AuthorID:  comment.AuthorID,
+			Author:    comment.Author.ToResponse(),
+			CreatedAt: comment.CreatedAt,
+		})
+	}
+	return response, nil
+}
+
+func (s *Service) DeleteComment(commentId, userId uint) error {
+	var comment models.Comment
+	err := s.db.First(&comment, commentId).Error
+	if err != nil {
+		return err
+	}
+	if comment.AuthorID != userId {
+		return errors.New("Unauthorized")
+	}
+	return s.db.Delete(&comment).Error
+}
+
+func (s *Service) toBlogListResponse(blogs []models.Blog) ([]models.BlogListResponse, error) {
+	var response []models.BlogListResponse
+	for _, blog := range blogs {
+		var voteCount int64
+		s.db.Model(&models.Vote{}).Where("blog_id=?", blog.ID).Count(&voteCount)
+
+		response = append(response, models.BlogListResponse{
+			ID:        blog.ID,
+			Title:     blog.Title,
+			Genre:     blog.Genre,
+			Views:     blog.Views,
+			VoteCount: voteCount,
+			AuthorID:  blog.AuthorID,
+			Author:    blog.Author.ToResponse(),
+			CreatedAt: blog.CreatedAt,
+		})
+	}
+	return response, nil
+}

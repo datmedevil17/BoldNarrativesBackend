@@ -53,15 +53,79 @@ func (s *Service) AuthenticateUser(email, password string) (*models.User, error)
 	return &user,nil
 }
 
-func (s *Service)GetUserById(id string)(*models.User,error){}
+func (s *Service)GetUserById(id string)(*models.User,error){
+	var user models.User
+	if err:=s.db.First(&user,id).Error;err!=nil{
+		return nil,err
+	}
+	return &user,nil
+}
 
-func (s *Service)GetUserProfile(id string)(*models.User,error){}
+func (s *Service)GetUserProfile(id string)(*models.User,error){
+	var user models.User
+	if err:=s.db.Preload("Followers").Preload("Following").First(&user,id).Error;err!=nil{
+		return nil,err
+	}
+	return &user,nil
+}
 
-func (s *Service)FollowUser(followerId,followingId uint)error{}
+func (s *Service)FollowUser(followerId,followingId uint)error{
+	if followerId==followingId{
+		return errors.New("You cannot follow yourself")
+	}
+	var existingFollow models.Follows
+	err := s.db.Where("follower_id=? AND following_id=?",followerId,followingId).First(&existingFollow).Error
+	if err == nil {
+		return errors.New("You are already following this user")
+	}
+	follow:=&models.Follows{
+		FollowerID: followerId,
+		FollowingID: followingId,
+	}
+	if err := s.db.Create(follow).Error; err != nil {
+		return err
+	}
+	return nil
+}
 
-func (s *Service)UnFollowUser(followerId,followingId uint)error{}
+func (s *Service)UnFollowUser(followerId,followingId uint)error{
+	if followerId==followingId{
+		return errors.New("You cannot unfollow yourself")
+	}
+	err:=s.db.Where("follower_id=? AND following_id=?",followerId,followingId).Delete(&models.Follows{}).Error
+	if err != nil {
+		return err
+	}
+	return nil
 
-func (s *Service)GetFollowers(userId uint)([]models.User,error){}
+}
+
+func (s *Service)CheckIfFollowing(followerId,followingId uint)(bool,error){
+	var count int64
+	err:=s.db.Where("follower_id=? AND following_id=?",followerId,followingId).Count(&count).Error
+	if err != nil {
+		return false,err
+	}
+	return count>0,nil
+
+}
+
+func (s *Service)GetFollowers(userId uint)([]models.FollowResponse,error){
+	var follows []models.Follows
+
+	err:= s.db.Where("following_id=?",userId).Preload("Follower").Find(&follows).Error
+	if err != nil {
+		return nil,err
+	}
+	var followers []models.FollowResponse
+	for _,follow := range follows {
+		followers = append(followers,models.FollowResponse{
+			ID:follow.Follower.ID,
+			Name:follow.Follower.Name,
+		})
+	}
+	return followers,nil
+}
 
 func (s *Service)GetFollowing(userId uint)([]models.FollowResponse,error){
 	var follows []models.Follows
