@@ -27,7 +27,7 @@ type VoteRequest struct{
 
 type FilterRequest struct{
 	Genre string `json:"genre"`
-	AuthorID uint `json:"author_id"`
+	AuthorID *uint `json:"author_id"`
 	Search string `json:"search"`
 	Skip int `json:"skip"`
 }

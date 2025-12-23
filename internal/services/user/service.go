@@ -53,7 +53,7 @@ func (s *Service) AuthenticateUser(email, password string) (*models.User, error)
 	return &user,nil
 }
 
-func (s *Service)GetUserById(id string)(*models.User,error){
+func (s *Service)GetUserById(id uint)(*models.User,error){
 	var user models.User
 	if err:=s.db.First(&user,id).Error;err!=nil{
 		return nil,err
@@ -61,7 +61,7 @@ func (s *Service)GetUserById(id string)(*models.User,error){
 	return &user,nil
 }
 
-func (s *Service)GetUserProfile(id string)(*models.User,error){
+func (s *Service)GetUserProfile(id uint)(*models.User,error){
 	var user models.User
 	if err:=s.db.Preload("Followers").Preload("Following").First(&user,id).Error;err!=nil{
 		return nil,err

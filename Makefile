@@ -11,3 +11,12 @@ docker-build:
 
 docker-run:
 	docker-compose up -d
+
+docker-stop:
+	docker-compose down
+
+lint:
+	go vet ./...
+
+test:
+	go test -v ./...
