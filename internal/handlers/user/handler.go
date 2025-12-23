@@ -33,6 +33,7 @@ func (h *Handler) SignUp(c *gin.Context) {
 			return
 		}
 		utils.ErrorResponse(c, http.StatusInternalServerError, "Internal Server Error")
+		return
 	}
 	token, err := utils.GenerateToken(user.Email, user.ID, h.jwtSecret)
 	if err != nil {
@@ -108,16 +109,16 @@ func (h *Handler) ViewProfile(c *gin.Context) {
 
 func (h *Handler) GetProfile(c *gin.Context) {
 	userID, err := strconv.ParseUint(c.Param("id"), 10, 32)
-	if err!=nil{
-		utils.ErrorResponse(c,http.StatusBadRequest,"Error occured in profile.")
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusBadRequest, "Error occured in profile.")
 		return
 	}
-	user,err:=h.service.GetUserProfile(uint(userID))
-	if err!=nil{
-		utils.ErrorResponse(c,http.StatusNotFound,"User not found")
+	user, err := h.service.GetUserProfile(uint(userID))
+	if err != nil {
+		utils.ErrorResponse(c, http.StatusNotFound, "User not found")
 		return
 	}
-	c.JSON(http.StatusOK,user)
+	c.JSON(http.StatusOK, user)
 
 }
 func (h *Handler) CheckFollowStatus(c *gin.Context) {

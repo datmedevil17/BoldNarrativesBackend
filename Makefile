@@ -10,10 +10,10 @@ docker-build:
 	docker build -t blog-backend .
 
 docker-run:
-	docker-compose up -d
+	docker compose up -d
 
 docker-stop:
-	docker-compose down
+	docker compose down
 
 lint:
 	go vet ./...
