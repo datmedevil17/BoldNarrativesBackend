@@ -50,7 +50,8 @@ func (h *Handler) SignIn(c *gin.Context) {
 	}
 	user, err := h.service.AuthenticateUser(req.Email, req.Password)
 	if err != nil {
-		utils.ErrorResponse(c, http.StatusInternalServerError, "Internal Server Error")
+		utils.ErrorResponse(c, http.StatusInternalServerError, err.Error())
+		return
 	}
 	token, err := utils.GenerateToken(user.Email, user.ID, h.jwtSecret)
 	if err != nil {

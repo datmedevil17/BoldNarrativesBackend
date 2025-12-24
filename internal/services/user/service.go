@@ -16,7 +16,7 @@ func NewService(db *gorm.DB) *Service {
 	return &Service{db: db}
 }
 
-func (s *Service) CreateUser(name, email, password string) (*models.User, error) {
+func (s *Service) CreateUser(email, name, password string) (*models.User, error) {
 	var existingUser models.User
 	if err := s.db.Where("email=?", email).First(&existingUser).Error; err == nil {
 		return nil, errors.New("user already exists")

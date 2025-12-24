@@ -7,7 +7,7 @@ deps:
 	go mod tidy
 
 docker-build:
-	docker build -t blog-backend .
+	docker build --no-cache -t blog-backend .
 
 docker-run:
 	docker compose up -d
